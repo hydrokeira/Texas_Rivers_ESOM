@@ -11,6 +11,8 @@ library(lemon)
 library(gridExtra)
 library(ggpubr)
 library(caret)
+library(cetcolor)
+library(lubridate)
 
 #set working directories
 setwd("/Users/keirajohnson/Box Sync/Keira_Johnson/GGM_Paper2Materials/Codes and Data")
@@ -61,7 +63,6 @@ X1 <- scale(dat[,param], center=TRUE, scale = TRUE) #These are the normalized in
 
 #ESOM Grace made - saved output for
 res <- readRDS("ESOM_04242022.RDS")
-
 #Make and plot the UMatrix
 umatrix <-  umatrixForEsom(res$Weights, Lines=res$Lines, 
                            Columns=res$Columns, Toroid=res$Toroid)
@@ -72,6 +73,9 @@ plotMatrix(umatrix, Toroid=FALSE, BmSize = 2,
            DrawLegend = TRUE, Clean = TRUE)
 
 dev.off()
+
+#for four panel plot
+p1<-plotMatrix(umatrix, Toroid=FALSE, BmSize = 2, Clean = TRUE, DrawLegend = F)+ggtitle("(a) ESOM Topography")
 
 #showMatrix3D(res$Umatrix)
 
@@ -132,6 +136,27 @@ weights_clust<-res$Weights
 
 #kmeans using 6 clusters
 set.seed(123)
+
+# wss<-list()
+# 
+# for (i in 1:20) {
+#   print(i)
+#   set.seed(123)
+#   
+#   km.out <- kmeans(weights_clust, centers = i, nstart=50)
+#   # Save total within sum of squares to wss variable
+#   wss[i] <- km.out$tot.withinss
+# }
+# 
+# pdf("ScreePlot_Clusters.pdf", width = 8, height = 6)
+# 
+# plot(1:20, wss, type = "b", 
+#      xlab = "Number of Clusters", 
+#      ylab = "Within groups sum of squares")
+# 
+# dev.off()
+
+set.seed(123)
 kmeans_cluster<-kmeans(weights_clust, iter.max=50, nstart=50, centers = 6)
 
 clusts<-kmeans_cluster$cluster
@@ -166,28 +191,128 @@ BestMatches_cluster$clust <- ifelse(BestMatches_cluster$clust %in% cluster1,1,
 dat$obs <- seq(1,nrow(dat),1)
 cdat <- inner_join(dat,BestMatches_cluster[,c("obs", "clust")], by=c("obs"))
 
-#write.csv(cdat, "Data_wClusters.csv")
+write.csv(cdat, "CDAT_ESOM.csv")
 
-colors <- brewer.pal(n=6,"Set1")
+cdat2<-inner_join(dat, BestMatches, by="obs")
 
-colors<-c("#4DAF4A", "#E41A1C", "#FF7F00", "#984EA3", "#FFFF33", "#377EB8")
+cdat2<-cdat2 %>%
+  group_by(id) %>%
+  mutate(mean_year=mean(year(date)), mean_month=mean(month(date)))
 
-pdf("Umatrix_Clusters_Jan2024.pdf", width = 8, height = 5.5)
+cdat2 <- cdat2 %>%
+  mutate(mean_year_group = round(mean_year/10)*10)
 
-#plot umatrix with clusters on top
-plotMatrix(umatrix, as.matrix(BestMatches_cluster[,c("obs","row","col")]), Toroid=F, BmSize=4, DrawLegend=F, Clean=T, 
-           Cls=BestMatches_cluster$clust, ClsColors = colors)
+cdat2$year_cluster<-group_indices(cdat2, mean_year_group)
+
+pdf("Clusters_by_Time.pdf", width = 10, height = 7)
+
+ggplot(cdat, aes(x=month(date), fill=as.character(clust)))+geom_density(aes(group=as.character(clust)), alpha=0.5)+
+  theme_classic()+scale_fill_manual(values = colors)+scale_x_continuous(labels=seq(1,12,1), breaks = seq(1,12,1))+
+  labs(x="Month of Sample Collection", y="Density", fill="Cluster")+
+  theme(text = element_text(size = 20))
+
+ggplot(cdat, aes(x=month(date), fill=as.character(clust)))+geom_density(aes(group=as.character(clust)), alpha=0.5)+
+  theme_classic()+scale_fill_manual(values = colors)+scale_x_continuous(labels=seq(1,12,1), breaks = seq(1,12,1))+
+  labs(x="Month of Sample Collection", y="Density", fill="Cluster")+facet_wrap(~clust)+
+  theme(text = element_text(size = 20), legend.position = "null")
+
+ggplot(cdat, aes(x=year(date), fill=as.character(clust)))+geom_density(aes(group=as.character(clust)), alpha=0.5)+
+  theme_classic()+scale_fill_manual(values = colors)+
+  labs(x="Year of Sample Collection", y="Density", fill="Cluster")+
+  theme(text = element_text(size = 20))
+
+ggplot(cdat, aes(x=year(date), fill=as.character(clust)))+geom_density(aes(group=as.character(clust)), alpha=0.5)+
+  theme_classic()+scale_fill_manual(values = colors)+
+  labs(x="Year of Sample Collection", y="Density", fill="Cluster")+facet_wrap(~clust)+
+  theme(text = element_text(size = 20), legend.position = "null")
 
 dev.off()
 
+#write.csv(cdat, "Data_wClusters.csv")
+
+colors<-c("#E69F00","#56B4E9","#009E73","#0072B2","#D55E00","#CC79A7")
+
+colors_months<-cet_pal(12, "c4s")
+show_col(colors_years)
+
+colors_years<-scales::viridis_pal()(8)
+
+pdf("Umatrix_Clusters_Dec2024.pdf", width = 8, height = 5.5)
+
+#plot umatrix with clusters on top
+p1<-plotMatrix(umatrix, as.matrix(BestMatches_cluster[,c("obs","row","col")]), 
+           Toroid=F, BmSize=4, DrawLegend=T, Clean=T, 
+               Cls=BestMatches_cluster$clust, ClsColors = colors)+labs(tag="a")+
+  theme(text = element_text(size=20))
+
+dev.off()
+
+#plot umatrix with clusters on top
+p2<-plotMatrix(umatrix, as.matrix(BestMatches_cluster[,c("obs","row","col")]), Toroid=F, BmSize=4, DrawLegend=F, Clean=T, 
+               Cls=BestMatches_cluster$clust, ClsColors = colors)+ggtitle("(b) Nodes Colored by Cluster")
+
+pdf("Umatrix_Months.pdf", width = 8, height = 5.5)
+
+#plot umatrix with clusters on top
+p3<-plotMatrix(umatrix, as.matrix(cdat2[,c("obs","row","col")]), Toroid=F, BmSize=4, DrawLegend=F, Clean=T, 
+           Cls=round(cdat2$mean_month), ClsColors = colors_months)+ggtitle("(c) Nodes Colored by Mean Month")
+
+dev.off()
+
+pdf("Umatrix_Years.pdf", width = 8, height = 5.5)
+
+p4<-plotMatrix(umatrix, as.matrix(cdat2[,c("obs","row","col")]), Toroid=F, BmSize=4, DrawLegend=F, Clean=T, 
+           Cls=round(cdat2$year_cluster), ClsColors = colors_years)+ggtitle("(d) Nodes Colored by Mean Decade")+
+  labs(color="Mean Decade")+
+  scale_color_manual(breaks = c(1,2,3,4,5,6,7,8), values = colors_years,
+                                                       labels=c("1950", "1960", "1970","1980","1990", "2000", "2010", "2020"))
+
+dev.off()
+
+p3
+
+pdf("ESOM_four_panel_nolegend.pdf", width = 12, height = 9)
+
+ggarrange(p1, p2, p3, p4)
+
+dev.off()
+
+dis = dist(weights_clust)^2
+
+#make silhouette plots for clusters - order largest to smallest
+cluster1<-c("2")
+cluster2<-c("4")
+cluster3<-c("5")
+cluster4 <- c("3")
+cluster5 <- c("6")
+cluster6<- c("1")
+
+#rename clusters so they are ordered largest to smallest
+kmeans_cluster$cluster <- ifelse(kmeans_cluster$cluster %in% cluster1,1,
+                                    ifelse(kmeans_cluster$cluster %in% cluster2, 2,
+                                           ifelse(kmeans_cluster$cluster %in% cluster3,3,
+                                                  ifelse(kmeans_cluster$cluster %in% cluster4,4,
+                                                         ifelse(kmeans_cluster$cluster %in% cluster5, 5,
+                                                                ifelse(kmeans_cluster$cluster %in% cluster6,6, kmeans_cluster$cluster))))))
+
+sil<-silhouette(kmeans_cluster$cluster,dis)
+
 pdf("Sil_Width_Jan2024.pdf", width = 8, height = 4, family = "Times")
 
-fviz_silhouette(sil)+
-  labs(title="", fill="Cluster", col="Cluster", y="Silhouette width")+
+p2<-fviz_silhouette(sil)+
+  labs(title="", fill="Clusters", col="Clusters", y="Silhouette width")+
   scale_color_manual(values=c("1" = colors[1], "2"= colors[2], "3" = colors[3],
                               "4" = colors[4], "5"=colors[5], "6"=colors[6]))+
   scale_fill_manual(values=c("1" = colors[1], "2"= colors[2], "3" = colors[3],
-                             "4" = colors[4], "5"=colors[5], "6"=colors[6]))
+                             "4" = colors[4], "5"=colors[5], "6"=colors[6]))+
+  labs(tag="b")+theme_classic()+theme(text = element_text(size=20), axis.text.x = element_blank(),
+                                      axis.ticks.x = element_blank())
+
+dev.off()
+
+pdf("Umatrix_Clusters_Silhouette_Dec2024.pdf", width = 8, height = 10, family = "Times")
+
+ggarrange(p1, p2, nrow = 2)
 
 dev.off()
 
@@ -201,130 +326,17 @@ cdat_m$variable <- as.character(cdat_m$variable)
 cdat_m$value<-as.numeric(cdat_m$value)
 cdat_m$clust <- factor(cdat_m$clust)
 
-pdf("Solute_Distribution_Jan2024.pdf", width = 8, height = 7, family = "Times")
+pdf("Solute_Distribution_Dec2024.pdf", width = 8, height = 7, family = "Times")
 
 ggplot(data=cdat_m, aes(x=variable, y=value, color=clust))+
   geom_boxplot(position=position_dodge(width=0.8))+
   labs(x="Solute", y="Proportion of concentration")+  
-  scale_color_manual(values=c("1" = colors[1], "2"= colors[2], "3" = colors[3],
-                              "4" = colors[4], "5"=colors[5], "6"=colors[6]))+
+  scale_color_manual(values=colors)+
   theme_bw() + 
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"),
         axis.text.x=element_text(angle=45, hjust = 1),legend.position="none", text = element_text(size=20))+
   facet_wrap(~clust, nrow=3)
-
-dev.off()
-
-####Random Forest on ESOM Clusters####
-dat <- cdat
-dat$clust <- factor(dat$clust)
-mod.attributes <- c(Rtypes[-4], LCtypes, "MAP")
-dat <- dat[complete.cases(dat[,c(mod.attributes,"clust")]),c(mod.attributes, "clust")]
-
-# #split into test and train
-set.seed(123)
-ind <- sample(2, nrow(dat), replace = TRUE, prob = c(0.7, 0.3))
-train <- dat[ind==1,]
-test <- dat[ind==2,]
-
-#tune mtry
-set.seed(123)
-mtry <- tuneRF(y =train$clust,
-               x=train[,mod.attributes],stepFactor=2,
-               improve=0.01, ntree=500)
-
-
-table(train$clust)
-
-set.seed(123)
-rf_test <- randomForest(clust~., mtry=2, data=train,
-                        proximity=F, ntree=1000, sampsize=c(838,838,838,838,838,838), strata=train$clust,
-                        replace=T)
-
-pdf("RF_Ntree_Test.pdf", width = 8, height = 6)
-
-plot(rf_test)
-
-dev.off()
-
-set.seed(123)
-rf <- randomForest(clust~., mtry=2, data=train,
-                   proximity=F, ntree=200, sampsize=c(838,838,838,838,838,838), strata=train$clust,
-                   replace=T, importance=T)
-
-rf
-
-p1<-predict(rf, train)
-
-confusionMatrix(p1, train$clust)
-
-p2<-predict(rf, test)
-
-test_clust_count<-data.frame(table(test$clust))
-colnames(test_clust_count)<-c("Reference", "Sum")
-
-conf_df<-confusionMatrix(p2, test$clust)
-conf_df_table<-data.frame(conf_df$table)
-conf_df_table<-merge(conf_df_table, test_clust_count, by="Reference")
-conf_df_table$prop<-conf_df_table$Freq/conf_df_table$Sum
-conf_df_table$same<-ifelse(conf_df_table$Reference==conf_df_table$Prediction, "yes","no")
-
-#visualize matrix
-CM_plot<-ggplot(conf_df_table, aes(Prediction, Reference))+geom_raster(aes(fill=same))+
-  scale_fill_manual(values=c("yes"="forestgreen", "no"="salmon"))+
-  geom_text(aes(label=round(prop, 2)), size=8, family="Times")+theme_classic()+labs(x="Predicted Cluster",y="Actual Cluster",fill="", tag="a")+
-  theme(legend.position = "null", text = element_text(size = 25, family = "Times"))
-
-importance_df<-data.frame(importance(rf))
-importance_df$driver<-rownames(importance_df)
-
-vars_order<-importance_df %>%
-  dplyr::arrange(desc(MeanDecreaseAccuracy), driver) %>%
-  dplyr::select(driver)
-
-importance_df$driver<-factor(importance_df$driver, levels = vars_order$driver)
-
-importance_melt<-melt(importance_df[,-8], id.vars = "driver")
-
-importance_melt$driver<-factor(importance_melt$driver, levels = vars_order$driver)
-
-overall_imp_accuracy<-ggplot(importance_df, aes(MeanDecreaseAccuracy, reorder(driver, MeanDecreaseAccuracy)))+
-  geom_bar(stat = "identity", fill="black")+
-  theme_classic()+labs(x="Mean Decrease Accuracy (%)", y="", tag="b")+
-  theme(text = element_text(size=20, family = "Times"))
-
-overall_imp_gini<-ggplot(importance_df, aes(MeanDecreaseGini, reorder(driver, MeanDecreaseGini)))+
-  geom_bar(stat = "identity", fill="black")+
-  theme_classic()+labs(x="Mean Decrease Gini Score", y="", tag="b")+
-  theme(text = element_text(size=20, family = "Times"))
-
-pdf("RF_performance_gini_accuracy.pdf", width = 14, height = 7)
-
-ggarrange(overall_imp_accuracy, overall_imp_gini)
-
-dev.off()
-
-
-###plot most important variables across clusters
-import_factors<-dat[,c("clust", "MAP", "Carbonates", "GrassShrub", "Wetland", "Forest", "Sandstone",
-                       "Mudstone", "Conglomerate", "Sdep")]
-
-import_factors_melt<-melt(import_factors, id.vars = c("clust"))
-
-pdf("MostImportVars_March2024.pdf", width = 14, height = 14, family="Times")
-
-ggplot(import_factors_melt, aes(clust, value))+geom_boxplot(aes(fill=clust), alpha=0.8)+
-  facet_wrap(~variable, scales = "free")+theme_classic()+
-  theme(text = element_text(size = 20))+labs(x="", y="Driver Value")+
-  scale_fill_manual(values=colors)+scale_color_manual(values=colors)+
-  theme(axis.text.x = element_blank())+labs(fill="Cluster", col="Cluster")
-
-dev.off()
-
-tiff("Importance_ConfusionMatrix_March2024.tiff", width = 14, height = 7, units = "in", res = 300)
-
-ggarrange(CM_plot, overall_imp_accuracy, widths = c(0.55, 0.45))
 
 dev.off()
 
